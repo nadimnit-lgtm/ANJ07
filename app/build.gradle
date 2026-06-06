@@ -15,8 +15,8 @@ android {
         applicationId "com.ahmed.azkartv"
         minSdk 22
         targetSdk 34
-        versionCode 4
-        versionName "2.1-Rev07.05"
+        versionCode 6
+        versionName "2.3-Rev09.00"
     }
 
     signingConfigs {

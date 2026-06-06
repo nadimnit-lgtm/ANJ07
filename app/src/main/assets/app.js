@@ -8,11 +8,14 @@ const MODE = (new URLSearchParams(location.search).get('mode') || 'app');
 const SCREENSAVER = MODE === 'screensaver';
 if (SCREENSAVER) document.body.classList.add('screensaver');
 
-const TYPES = ['azkar', 'dua', 'kalima'];
-const ICONS = { azkar: '📿', dua: '🤲', kalima: '☝️' };
-const TYPE_LABEL = { azkar: 'Azkar', dua: 'Dua', kalima: 'Kalima' };
+const TABS = ['azkar', 'dua', 'kalima', 'durood', 'istighfar'];
+const TYPES = TABS;
+const ICONS = { azkar: '📿', dua: '🤲', kalima: '☝️', durood: '🌹', istighfar: '🔁' };
+const TYPE_LABEL = { azkar: 'Azkar', dua: 'Dua', kalima: 'Kalima', durood: 'Durood', istighfar: 'Istighfar' };
+const TAB_LABEL = TYPE_LABEL;
+const itemTab = it => it && (it.tab || it.type);
 const MODE_LABEL = {
-  mixed: 'Mixed', dua: 'Dua only', azkar: 'Azkar only', kalima: 'Six Kalimas', quranic_dua: 'Quranic Duas', daily_dua: 'Daily Duas',
+  mixed: 'Mixed', dua: 'Dua', azkar: 'Azkar', kalima: 'Six Kalimas', durood: 'Durood', quranic_dua: 'Quranic Duas', daily_dua: 'Daily Duas',
   morning: 'Morning Azkar', evening: 'Evening Azkar', after_salah: 'After Salah', sleep: 'Sleep',
   protection: 'Protection', ruqyah: 'Ruqyah', istighfar: 'Istighfar', salawat: 'Darood / Salawat',
   daily_azkar: 'Tasbih / Tahleel', witr_istikhara: 'Witr / Istikhara', favorites: 'Favorites', random: 'Random', friday: 'Friday', ramadan: 'Ramadan', hajj_umrah: 'Hajj / Umrah', anxiety: 'Anxiety & Distress', health: 'Health', rizq: 'Rizq', family: 'Family', travel: 'Travel', food: 'Food', mosque: 'Mosque', knowledge: 'Knowledge'
@@ -30,7 +33,7 @@ const STATS_KEY = 'azkar_usage_stats_v1';
 const DEFAULTS = {
   theme: 'light', timerSec: 60, ar: 1, tr: 1, en: 1,
   rotationMode: 'mixed', autoRotate: true, showTranslit: true,
-  showSalah: true, showChips: false, tajweed: true,
+  showSalah: false, showChips: false, tajweed: true,
   cityMode: 'auto', displayMode: 'full', immersive: true
 };
 let S = loadSettings();
@@ -143,7 +146,58 @@ function dismissAlert() { $('alert').classList.remove('show'); }
 function alertOpen() { return $('alert').classList.contains('show'); }
 function chime() { /* Audio and Adhan are intentionally disabled. */ }
 function safeTajweedHtml(html) { return String(html || '').replace(/<span\s+class=(['"])(tj-(?:ghunnah|qalqalah|madd|idgham|ikhfa|iqlab))\1>/g, '<span class="$2">').replace(/<(?!\/?span\b)[^>]*>/g, ''); }
-function arHtml(it) { if (!it) return ''; if (S.tajweed && it.tajweed_html) return safeTajweedHtml(it.tajweed_html); return S.tajweed ? TJ.colour(it.arabic || '') : escapeHtml(it.arabic || ''); }
+const TJ = (function () {
+  const LET = /[\u0621-\u064A\u0671\u0670]/;
+  const MARK = /[\u064B-\u0655\u0670\u06D6-\u06ED]/;
+  const SHADDA = '\u0651', SUKOON = '\u0652';
+  const TANWEEN = '\u064B\u064C\u064D';
+  const QALQ = '\u0642\u0637\u0628\u062C\u062F';
+  const IDGHAM = '\u064A\u0631\u0645\u0644\u0648\u0646';
+  const IKHFA = '\u062A\u062B\u062C\u062F\u0630\u0632\u0633\u0634\u0635\u0636\u0637\u0638\u0641\u0642\u0643';
+  const MADD_MARK = /[\u0653\u0654\u0655\u06E4]/;
+  const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  function clusters(t) {
+    const out = []; let i = 0;
+    while (i < t.length) {
+      const ch = t[i];
+      if (LET.test(ch)) { let j = i + 1, marks = ''; while (j < t.length && MARK.test(t[j])) { marks += t[j]; j++; } out.push({ base: ch, marks: marks, text: t.slice(i, j), sp: false }); i = j; }
+      else { out.push({ base: '', marks: '', text: ch, sp: true }); i++; }
+    }
+    return out;
+  }
+  function nextLetter(cl, k) { for (let i = k + 1; i < cl.length; i++) { if (!cl[i].sp) return cl[i].base; } return ''; }
+  function classify(cl, k) {
+    const c = cl[k]; if (c.sp) return null;
+    const b = c.base, m = c.marks;
+    const shadda = m.indexOf(SHADDA) >= 0, sukoon = m.indexOf(SUKOON) >= 0;
+    const tanween = [...TANWEEN].some(x => m.indexOf(x) >= 0);
+    if ((b === '\u0646' || b === '\u0645') && shadda) return 'tj-ghunnah';
+    if (b === '\u0622' || MADD_MARK.test(m) || m.indexOf('\u0670') >= 0) return 'tj-madd';
+    if ((b === '\u0646' && sukoon) || tanween) {
+      const nx = nextLetter(cl, k);
+      if (nx === '\u0628') return 'tj-iqlab';
+      if (IDGHAM.indexOf(nx) >= 0) return 'tj-idgham';
+      if (IKHFA.indexOf(nx) >= 0) return 'tj-ikhfa';
+      return null;
+    }
+    if (b === '\u0645' && sukoon) { const nx = nextLetter(cl, k); if (nx === '\u0628') return 'tj-ikhfa'; if (nx === '\u0645') return 'tj-ghunnah'; }
+    if (QALQ.indexOf(b) >= 0 && sukoon) return 'tj-qalqalah';
+    return null;
+  }
+  function colour(text) {
+    if (!text) return '';
+    const cl = clusters(text); let out = '';
+    for (let k = 0; k < cl.length; k++) {
+      const c = cl[k];
+      if (c.sp) { out += esc(c.text); continue; }
+      const cls = classify(cl, k);
+      out += cls ? `<span class="${cls}">${esc(c.text)}</span>` : esc(c.text);
+    }
+    return out;
+  }
+  return { colour };
+})();
+function arHtml(it) { if (!it) return ''; if (S.tajweed && it.tajweed_html) return safeTajweedHtml(it.tajweed_html); return (S.tajweed && TJ && TJ.colour) ? TJ.colour(it.arabic || '') : escapeHtml(it.arabic || ''); }
 function escapeHtml(v) { return String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 function normSearch(v) { return String(v || '').toLowerCase().normalize('NFKD').replace(/[\u064B-\u065F\u0670]/g, '').replace(/[أإآ]/g, 'ا').replace(/[ى]/g, 'ي').replace(/[ة]/g, 'ه').replace(/\s+/g, ' ').trim(); }
 function itemSearchText(it) { return normSearch([it.title, it.arabic, it.transliteration, it.translation, it.category, it.sub_category, it.source_reference].concat(itemTags(it)).join(' ')); }
@@ -158,7 +212,7 @@ function modeMatch(it, mode) {
   if (mode === 'mixed') return true;
   if (mode === 'favorites') return favorites && favorites.has(it.id);
   if (mode === 'random') return true;
-  if (mode === 'dua' || mode === 'azkar' || mode === 'kalima') return it.type === mode;
+  if (TABS.indexOf(mode) >= 0) return itemTab(it) === mode;
   if (mode === 'witr_istikhara') return itemTags(it).some(t => t === 'witr' || t === 'istikhara' || t === 'qunoot');
   return itemTags(it).indexOf(mode) >= 0 || it.category === mode || it.sub_category === mode;
 }
@@ -193,7 +247,7 @@ function typeItems(type) { return DATA ? DATA.all.filter(it => it.type === type)
 function renderTabs() {
   if (!DATA) return;
   const it = currentItem();
-  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', it && t.dataset.type === it.type));
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', it && t.dataset.tab === itemTab(it)));
 }
 function renderChips() {
   const chips = $('chips'); chips.innerHTML = '';
@@ -211,9 +265,9 @@ function renderChips() {
 function renderItem() {
   if (!DATA || !playlist.length) return;
   const it = currentItem();
-  card().dataset.type = it.type;
-  $('card-ic').textContent = ICONS[it.type] || '•';
-  $('card-title').textContent = TYPE_LABEL[it.type] || it.type;
+  card().dataset.type = itemTab(it);
+  $('card-ic').textContent = ICONS[itemTab(it)] || '•';
+  $('card-title').textContent = TAB_LABEL[itemTab(it)] || it.type;
   $('card-sub').textContent = [it.category, it.sub_category].filter(Boolean).join(' • ');
   document.querySelectorAll('#chips .chip').forEach(c => c.classList.toggle('on', c.textContent === it.category));
   const rep = it.repeat_count ? `<span class="rep">×${escapeHtml(it.repeat_count)}</span>` : '';
@@ -233,23 +287,35 @@ function renderItem() {
 function fitArabic() {
   const b = body(), ar = b.querySelector('.ar'); if (!ar) return;
   b.classList.remove('long-content'); ar.style.fontSize = '';
+  const tr = b.querySelector('.tr'), en = b.querySelector('.en');
+  if (tr) tr.style.fontSize = ''; if (en) en.style.fontSize = '';
   const it = currentItem(), length = (ar.textContent || '').replace(/\s+/g, '').length;
   let size = parseFloat(getComputedStyle(ar).fontSize);
   const portrait = window.innerWidth <= 900 || window.matchMedia('(orientation:portrait)').matches;
-  const minSize = portrait ? 23 : 30;
+  const minSize = portrait ? 19 : 26;
   if (it && it.is_long_text) size *= .70;
   else if (length > 260) size *= .72; else if (length > 180) size *= .80; else if (length > 115) size *= .88;
   ar.style.fontSize = Math.max(minSize, Math.floor(size)) + 'px';
-  let guard = 80;
-  while (b.scrollHeight > b.clientHeight + 2 && parseFloat(ar.style.fontSize) > minSize && guard-- > 0) ar.style.fontSize = Math.max(minSize, parseFloat(ar.style.fontSize) - 2) + 'px';
+  let guard = 90;
+  while (b.scrollHeight > b.clientHeight + 2 && parseFloat(ar.style.fontSize) > minSize && guard-- > 0)
+    ar.style.fontSize = Math.max(minSize, parseFloat(ar.style.fontSize) - 1) + 'px';
+  const latin = [tr, en].filter(Boolean);
+  let lguard = 70;
+  while (b.scrollHeight > b.clientHeight + 2 && lguard-- > 0) {
+    let changed = false;
+    latin.forEach(el => { const s = parseFloat(getComputedStyle(el).fontSize); if (s > 12) { el.style.fontSize = (s - 1) + 'px'; changed = true; } });
+    if (!changed) break;
+  }
   if (b.scrollHeight > b.clientHeight + 2) b.classList.add('long-content');
 }
 function step(delta) { if (!playlist.length) return; cur.index = (cur.index + delta + playlist.length) % playlist.length; renderItem(); resetRotate(); setFocus(card()); }
 const nextItem = () => step(1), prevItem = () => step(-1);
-function switchType(type) {
-  S.rotationMode = type;
+function tabItems(tab) { return DATA ? DATA.all.filter(it => itemTab(it) === tab) : []; }
+function switchType(tab) {
+  S.rotationMode = tab;
   saveSettings();
-  rebuildPlaylist(typeItems(type)[0] ? typeItems(type)[0].id : null);
+  const first = tabItems(tab)[0];
+  rebuildPlaylist(first ? first.id : null);
   renderChips(); renderItem(); resetRotate(); setFocus(card());
 }
 
@@ -395,9 +461,12 @@ function endGesture(ev) {
   if (longPressDone) { gesture = null; return; }
   const p = eventPoint(ev), dx = (p.x || gesture.lastX) - gesture.x, dy = (p.y || gesture.lastY) - gesture.y;
   const dt = Math.max(1, Date.now() - gesture.t), velocity = Math.abs(dx) / dt;
-  const horizontal = Math.abs(dx) >= 48 && Math.abs(dx) > Math.abs(dy) * 1.25;
-  const fling = Math.abs(dx) >= 34 && velocity > .45 && Math.abs(dx) > Math.abs(dy) * 1.15;
+  const horizontal = Math.abs(dx) >= 42 && Math.abs(dx) > Math.abs(dy) * 1.2;
+  const fling = Math.abs(dx) >= 30 && velocity > .4 && Math.abs(dx) > Math.abs(dy) * 1.1;
+  const b = body(), scrollable = b && b.scrollHeight > b.clientHeight + 4;
+  const vertical = Math.abs(dy) >= 46 && Math.abs(dy) > Math.abs(dx) * 1.2 && !scrollable;
   if (horizontal || fling) { dx < 0 ? nextItem() : prevItem(); if (ev.cancelable) ev.preventDefault(); }
+  else if (vertical) { dy < 0 ? nextItem() : prevItem(); if (ev.cancelable) ev.preventDefault(); }
   gesture = null;
 }
 function initCardGestures() {
@@ -448,12 +517,12 @@ function wakeImmersive() {
 
 /* ---------------- burn-in protection ---------------- */
 const SHIFTS = [[0,0],[8,4],[-6,8],[6,-6],[-8,-4],[4,6]]; let shiftIdx = 0;
-function burnInShift() { shiftIdx = (shiftIdx + 1) % SHIFTS.length; const [x, y] = SHIFTS[shiftIdx]; $('shift').style.transform = `translate(${x}px, ${y}px)`; }
+function burnInShift() { if (!SCREENSAVER) return; shiftIdx = (shiftIdx + 1) % SHIFTS.length; const [x, y] = SHIFTS[shiftIdx]; $('shift').style.transform = `translate(${x}px, ${y}px)`; }
 
 /* ---------------- boot ---------------- */
 function start() {
   applySettings(false); wakeImmersive(); setNet(navigator.onLine); computeTimes(); tickClock(); setInterval(tickClock, 1000); setInterval(computeTimes, 30 * 60 * 1000);
-  document.querySelectorAll('.tab').forEach(t => t.onclick = () => switchType(t.dataset.type));
+  document.querySelectorAll('.tab').forEach(t => t.onclick = () => switchType(t.dataset.tab));
   if ($('viewall')) $('viewall').onclick = () => openOverlay('all'); if ($('fav-view')) $('fav-view').onclick = () => openOverlay('favorites'); $('fav-toggle').onclick = toggleFavorite;
   initSettings(); initCardGestures();
   Promise.all([loadJSON(FILES.azkar), loadJSON(FILES.dua), loadJSON(FILES.kalima), loadJSON(FILES.categories).catch(() => null), loadJSON(FILES.index).catch(() => null)]).then(([azkar, dua, kalima, cats, index]) => {
